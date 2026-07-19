@@ -42,7 +42,7 @@
 <body>
     <h1>ForceV Flasher</h1>
     <div class="subtitle">Aggiornamento firmware pedane &amp; encoder — via Chrome, senza installare nulla</div>
-    <div class="version-badge"><span id="fwVersion">FW 4.2.2</span></div>
+    <div class="version-badge"><span id="fwVersion">FW 5.0.0</span></div>
 
     <div class="warning" id="browserWarning">
         ⚠️ Questo browser non supporta Web Serial.<br>
@@ -52,6 +52,12 @@
     <div class="info-box">
         ✅ L'aggiornamento <b>non cancella</b> ruolo, tipo, nome e calibrazioni della stazione:
         scrive solo il firmware. Dopo il flash la stazione riparte da sola già configurata.
+    </div>
+
+    <div class="info-box" style="background:#ff6b3515;border-color:#ff6b3588;color:#f0c4ae">
+        ⚠️ <b>Aggiorna TUTTE le stazioni nella stessa sessione</b> (master e slave):
+        la 5.0.0 cambia il protocollo radio interno e <b>non comunica</b> con stazioni
+        rimaste alla versione precedente. Richiede app ForceV <b>5.8.39 o successiva</b>.
     </div>
 
     <div class="main-container">
@@ -90,7 +96,7 @@
 
         const FIRMWARE_BASE_URL = 'https://t4k3.github.io/ForceVFlasher';
         const BAUD_RATE = 921600;
-        const FW_VERSION = '4.2.2';
+        const FW_VERSION = '5.0.0';
 
         // NB: NIENTE eraseFlash totale (a differenza del BallgunFlasher):
         // sulla ForceV la NVS contiene ruolo/tipo/nome/calibrazioni della

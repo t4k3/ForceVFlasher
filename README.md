@@ -23,8 +23,12 @@ cavo, poi riprova Connetti.
 ## Contenuto
 
 - `index.html` — la pagina flasher (esptool-js via Web Serial, flash a 921600 baud)
-- `4.2.2/` — binari ufficiali del firmware collaudato:
-  `bootloader.bin` (0x0), `partition-table.bin` (0x8000), `forcev_fw.bin` (0x10000)
+- `5.0.0/` — **firmware corrente** (linea James): la pagina flasha questo.
+  ⚠️ La 5.0.0 cambia il protocollo radio interno: **aggiornare master e slave
+  nella stessa sessione** (versioni miste non comunicano). Richiede app ≥ 5.8.39.
+- `4.2.2/` — known-good congelata (collaudo di campo 18/07/2026), tenuta come
+  scialuppa: per tornare indietro basta ripuntare `FW_VERSION` in index.html.
+- Layout binari: `bootloader.bin` (0x0), `partition-table.bin` (0x8000), `forcev_fw.bin` (0x10000)
 
 ## Per aggiornare il firmware pubblicato
 
