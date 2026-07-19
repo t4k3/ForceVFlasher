@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ForceV Flasher</title>
+    <style>
+        * { box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
+        body { margin: 0; padding: 20px; background: #1a1a2e; color: #eee; min-height: 100vh; }
+        h1 { text-align: center; color: #00d4ff; margin-bottom: 5px; }
+        .subtitle { text-align: center; color: #888; margin-bottom: 6px; }
+        .version-badge { text-align: center; margin-bottom: 20px; }
+        .version-badge span { background: #00d4ff22; border: 1px solid #00d4ff; color: #00d4ff;
+            border-radius: 20px; padding: 4px 16px; font-weight: 600; }
+        .warning { background: #ff6b3520; border: 1px solid #ff6b35; border-radius: 8px; padding: 15px;
+            margin: 0 auto 20px; text-align: center; max-width: 760px; display: none; }
+        .info-box { background: #25d36615; border: 1px solid #25d36688; border-radius: 8px; padding: 12px 15px;
+            margin: 0 auto 20px; max-width: 760px; color: #b8e6c8; font-size: 0.95em; }
+        .main-container { max-width: 760px; margin: 0 auto; display: flex; flex-direction: column; gap: 15px; }
+        .device-panel { background: #252540; border-radius: 12px; padding: 20px; }
+        .device-panel h2 { margin: 0 0 15px 0; font-size: 1.15em; color: #00d4ff; display: flex; align-items: center; gap: 10px; }
+        .status-dot { width: 12px; height: 12px; border-radius: 50%; background: #666; }
+        .status-dot.connected { background: #25d366; box-shadow: 0 0 8px #25d366; }
+        .steps { color: #aaa; font-size: 0.95em; line-height: 1.7; margin-bottom: 15px; }
+        .row { display: flex; gap: 10px; flex-wrap: wrap; }
+        button { flex: 1; min-width: 200px; padding: 14px; font-size: 1.05em; font-weight: 600; border: none;
+            border-radius: 8px; cursor: pointer; transition: 0.15s; }
+        button:disabled { opacity: 0.4; cursor: not-allowed; }
+        #connectBtn { background: #00d4ff; color: #04202b; }
+        #connectBtn.connected { background: #444a66; color: #eee; }
+        #updateBtn { background: #25d366; color: #06290f; }
+        .meta { display: flex; gap: 20px; margin-top: 12px; color: #888; font-size: 0.9em; }
+        .meta b { color: #ccc; font-weight: 600; }
+        .progress { display: none; margin-top: 14px; background: #1a1a2e; border-radius: 6px; overflow: hidden; height: 14px; }
+        .progress-bar { height: 100%; width: 0%; background: linear-gradient(90deg, #00d4ff, #25d366); transition: width 0.2s; }
+        #console { background: #0d0d1a; border-radius: 8px; padding: 14px; height: 320px; overflow-y: auto;
+            font-family: 'SF Mono', Menlo, monospace; font-size: 12px; white-space: pre-wrap; color: #9fd8a8; }
+        .footer { text-align: center; color: #555; margin-top: 18px; font-size: 0.85em; }
+        .footer a { color: #00d4ff; }
+    </style>
+</head>
+<body>
+    <h1>ForceV Flasher</h1>
+    <div class="subtitle">Aggiornamento firmware pedane &amp; encoder — via Chrome, senza installare nulla</div>
+    <div class="version-badge"><span id="fwVersion">FW 4.2.2</span></div>
+
+    <div class="warning" id="browserWarning">
+        ⚠️ Questo browser non supporta Web Serial.<br>
+        Usa <b>Chrome</b> o <b>Edge</b> su Mac/Windows (Safari e Firefox non funzionano).
+    </div>
+
+    <div class="info-box">
+        ✅ L'aggiornamento <b>non cancella</b> ruolo, tipo, nome e calibrazioni della stazione:
+        scrive solo il firmware. Dopo il flash la stazione riparte da sola già configurata.
+    </div>
+
+    <div class="main-container">
+        <div class="device-panel">
+            <h2><span class="status-dot" id="statusDot"></span> Stazione ForceV <span id="chipInfo" style="color:#888;font-weight:400;font-size:0.85em"></span></h2>
+            <div class="steps">
+                1. Collega la stazione al computer col cavo USB-C e <b>accendila</b><br>
+                2. Premi <b>Connetti</b> e scegli la porta (es. "USB JTAG/serial debug unit")<br>
+                3. Premi <b>Aggiorna firmware</b> e aspetta la barra al 100%<br>
+                4. La stazione si riavvia da sola — fatto. Ripeti per ogni stazione (master e slave <b>vanno aggiornate tutte</b>)
+            </div>
+            <div class="row">
+                <button id="connectBtn">Connetti</button>
+                <button id="updateBtn" disabled>Aggiorna firmware</button>
+            </div>
+            <div class="meta">
+                <div>Stato: <b id="statusText">Disconnesso</b></div>
+                <div>MAC: <b id="macValue">—</b></div>
+            </div>
+            <div class="progress" id="progress"><div class="progress-bar" id="progressBar"></div></div>
+        </div>
+
+        <div class="device-panel">
+            <h2 style="color:#888">Console</h2>
+            <div id="console"></div>
+        </div>
+    </div>
+
+    <div class="footer">
+        Takeoff · ForceV — firmware ufficiale collaudato ·
+        <a href="https://github.com/t4k3/ForceVFlasher">repo</a>
+    </div>
+
+    <script type="module">
+        import { ESPLoader, Transport } from 'https://unpkg.com/esptool-js@0.5.7/bundle.js';
+
+        const FIRMWARE_BASE_URL = 'https://t4k3.github.io/ForceVFlasher';
+        const BAUD_RATE = 921600;
+        const FW_VERSION = '4.2.2';
+
+        // NB: NIENTE eraseFlash totale (a differenza del BallgunFlasher):
+        // sulla ForceV la NVS contiene ruolo/tipo/nome/calibrazioni della
+        // stazione — l'erase li distruggerebbe. Si scrivono solo le
+        // partizioni firmware; writeFlash cancella da sé i settori toccati.
+        const FLASH_FILES = [
+            { offset: 0x0,     file: `${FW_VERSION}/bootloader.bin` },
+            { offset: 0x8000,  file: `${FW_VERSION}/partition-table.bin` },
+            { offset: 0x10000, file: `${FW_VERSION}/forcev_fw.bin` }
+        ];
+
+        const dev = { transport: null, esploader: null, connected: false, device: null, mac: null };
+        const consoleEl = document.getElementById('console');
+
+        if (!('serial' in navigator)) {
+            document.getElementById('browserWarning').style.display = 'block';
+            document.getElementById('connectBtn').disabled = true;
+        }
+
+        function log(msg) {
+            const time = new Date().toLocaleTimeString();
+            consoleEl.textContent += `[${time}] ${msg}\n`;
+            consoleEl.scrollTop = consoleEl.scrollHeight;
+        }
+
+        function captureMac(data) {
+            const macMatch = data.match(/MAC:\s*([0-9a-f:]{17})/i);
+            if (macMatch) {
+                dev.mac = macMatch[1].toUpperCase();
+                document.getElementById('macValue').textContent = dev.mac;
+            }
+        }
+
+        const terminal = {
+            clean() {},
+            writeLine(data) { log(data); captureMac(data); },
+            write(data) {
+                if (data && data.trim()) {
+                    consoleEl.textContent += data;
+                    consoleEl.scrollTop = consoleEl.scrollHeight;
+                    captureMac(data);
+                }
+            }
+        };
+
+        function setProgress(percent) {
+            document.getElementById('progress').style.display = 'block';
+            document.getElementById('progressBar').style.width = `${percent}%`;
+        }
+        function hideProgress() {
+            document.getElementById('progress').style.display = 'none';
+            document.getElementById('progressBar').style.width = '0%';
+        }
+
+        function updateUI() {
+            const dot = document.getElementById('statusDot');
+            const connectBtn = document.getElementById('connectBtn');
+            const updateBtn = document.getElementById('updateBtn');
+            if (dev.connected) {
+                dot.classList.add('connected');
+                document.getElementById('statusText').textContent = 'Connessa';
+                connectBtn.textContent = 'Disconnetti';
+                connectBtn.classList.add('connected');
+                updateBtn.disabled = false;
+            } else {
+                dot.classList.remove('connected');
+                document.getElementById('statusText').textContent = 'Disconnessa';
+                connectBtn.textContent = 'Connetti';
+                connectBtn.classList.remove('connected');
+                updateBtn.disabled = true;
+                document.getElementById('chipInfo').textContent = '';
+            }
+        }
+
+        async function connect() {
+            try {
+                log('Richiesta porta seriale...');
+                dev.device = await navigator.serial.requestPort();
+                log('Connessione...');
+                dev.transport = new Transport(dev.device, true);
+                dev.esploader = new ESPLoader({ transport: dev.transport, baudrate: BAUD_RATE, terminal });
+                log('Rilevamento chip...');
+                await dev.esploader.main();
+                document.getElementById('chipInfo').textContent = dev.esploader.chipName;
+                dev.connected = true;
+                updateUI();
+                log('Connessa!');
+            } catch (error) {
+                log(`Errore: ${error.message}`);
+                dev.connected = false;
+                updateUI();
+            }
+        }
+
+        async function disconnect() {
+            try {
+                if (dev.transport) { await dev.transport.disconnect(); }
+            } catch (e) { /* già chiusa */ }
+            dev.connected = false;
+            dev.esploader = null;
+            dev.transport = null;
+            dev.device = null;
+            updateUI();
+            log('Disconnessa');
+        }
+
+        async function downloadFile(url) {
+            const sep = url.includes('?') ? '&' : '?';
+            const response = await fetch(`${url}${sep}cb=${Date.now()}`);
+            if (!response.ok) { throw new Error(`Download fallito: ${url}`); }
+            const bytes = new Uint8Array(await response.arrayBuffer());
+            let binaryString = '';
+            for (let i = 0; i < bytes.length; i++) { binaryString += String.fromCharCode(bytes[i]); }
+            return binaryString;
+        }
+
+        async function updateFirmware() {
+            if (!dev.connected || !dev.esploader) { log('Non connessa!'); return; }
+            const updateBtn = document.getElementById('updateBtn');
+            const connectBtn = document.getElementById('connectBtn');
+            updateBtn.disabled = true;
+            connectBtn.disabled = true;
+
+            try {
+                log('\n========================================');
+                log(`  AGGIORNAMENTO FORCEV FW ${FW_VERSION}`);
+                log('========================================\n');
+                log('Passo 1/2: download firmware...');
+                setProgress(3);
+
+                const fileArray = [];
+                for (let i = 0; i < FLASH_FILES.length; i++) {
+                    const f = FLASH_FILES[i];
+                    log(`  ${f.file}...`);
+                    const data = await downloadFile(`${FIRMWARE_BASE_URL}/${f.file}`);
+                    fileArray.push({ address: f.offset, data });
+                    log(`    OK (${Math.round(data.length / 1024)} KB)`);
+                    setProgress(3 + (i + 1) / FLASH_FILES.length * 12);
+                }
+
+                log('\nPasso 2/2: scrittura flash (config e calibrazioni restano intatte)...');
+                await dev.esploader.writeFlash({
+                    fileArray,
+                    flashSize: 'keep',
+                    flashMode: 'keep',
+                    flashFreq: 'keep',
+                    eraseAll: false,
+                    compress: true,
+                    reportProgress: (fileIndex, written, total) => {
+                        const fileProgress = written / total;
+                        setProgress(15 + ((fileIndex + fileProgress) / fileArray.length) * 85);
+                    }
+                });
+
+                setProgress(100);
+                log('\nScrittura completata! Riavvio della stazione...');
+                await dev.esploader.after();   // hard reset
+                log('\n✅ FATTO — la stazione sta ripartendo col firmware ' + FW_VERSION + '.');
+                log('Puoi scollegare il cavo. Ripeti per la prossima stazione.');
+                await disconnect();
+            } catch (error) {
+                log(`\n❌ ERRORE: ${error.message}`);
+                log('Riprova: Connetti di nuovo e ripeti. Se non riparte, tieni premuto');
+                log('il tasto BOOT mentre colleghi il cavo, poi Connetti.');
+            } finally {
+                hideProgress();
+                updateBtn.disabled = !dev.connected;
+                connectBtn.disabled = false;
+                updateUI();
+            }
+        }
+
+        document.getElementById('connectBtn').addEventListener('click', () => {
+            dev.connected ? disconnect() : connect();
+        });
+        document.getElementById('updateBtn').addEventListener('click', updateFirmware);
+
+        log('ForceV Flasher pronto. Collega una stazione e premi Connetti.');
+    </script>
+</body>
+</html>
