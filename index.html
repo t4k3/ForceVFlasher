@@ -41,7 +41,7 @@
     </style>
 </head>
 <body>
-    <h1>ForceV Flasher <span class="page-version">v1.1</span></h1>
+    <h1>ForceV Flasher <span class="page-version">v1.2</span></h1>
     <div class="subtitle">Aggiornamento firmware pedane &amp; encoder — via Chrome, senza installare nulla</div>
     <div class="version-badge"><span id="fwVersion">FW 5.0.2</span></div>
 
@@ -192,6 +192,11 @@
                 } catch (resetError) {
                     log(`Reset automatico non riuscito (${resetError.message})`);
                     log('Riprovo senza reset: tieni premuto il pulsante di accensione e riaccendi la stazione.');
+                    // Il tentativo fallito lascia la porta aperta: senza chiuderla
+                    // la riapertura dà "The port is already open".
+                    try { await dev.transport.disconnect(); } catch (e) { /* già chiusa */ }
+                    dev.transport = new Transport(dev.device, true);
+                    dev.esploader = new ESPLoader({ transport: dev.transport, baudrate: BAUD_RATE, terminal });
                     await dev.esploader.main('no_reset');
                 }
                 document.getElementById('chipInfo').textContent = dev.esploader.chipName;
